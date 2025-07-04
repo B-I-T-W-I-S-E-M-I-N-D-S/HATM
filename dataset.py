@@ -6,6 +6,7 @@ import torch.utils.data as data
 import os
 import pickle
 from multiprocessing import Pool
+import glob
 
 def load_json(file):
     with open(file) as json_file:
@@ -131,6 +132,29 @@ class VideoDataSet(data.Dataset):
                 for vidx in range(len(keys)):
                     self.feature_rgb_file[keys[vidx]]=feature_All[keys[vidx]][:]
                 self.feature_flow_file = None
+
+            elif opt['data_format'] == "npy":
+                self.feature_rgb_file={}
+                self.feature_flow_file={}
+                feature_All = {}
+                
+                # Load .npy files from directory
+                data_dir = opt["video_feature_all_train"]
+                if not data_dir.endswith('/'):
+                    data_dir += '/'
+                
+                for file in self.video_list:
+                    npy_file_path = os.path.join(data_dir, file + '.npy')
+                    if os.path.exists(npy_file_path):
+                        feature_All[file] = np.load(npy_file_path)
+                    else:
+                        print(f"Warning: {npy_file_path} not found!")
+                        
+                keys = self.video_list
+                for vidx in range(len(keys)):
+                    if keys[vidx] in feature_All:
+                        self.feature_rgb_file[keys[vidx]] = feature_All[keys[vidx]]
+                self.feature_flow_file = None
                             
         else:
             if opt['data_format'] == "h5":
@@ -194,6 +218,29 @@ class VideoDataSet(data.Dataset):
                 keys = self.video_list
                 for vidx in range(len(keys)):
                     self.feature_rgb_file[keys[vidx]]=feature_All[keys[vidx]][:]
+                self.feature_flow_file = None
+
+            elif opt['data_format'] == "npy":
+                self.feature_rgb_file={}
+                self.feature_flow_file={}
+                feature_All = {}
+                
+                # Load .npy files from directory
+                data_dir = opt["video_feature_all_test"]
+                if not data_dir.endswith('/'):
+                    data_dir += '/'
+                
+                for file in self.video_list:
+                    npy_file_path = os.path.join(data_dir, file + '.npy')
+                    if os.path.exists(npy_file_path):
+                        feature_All[file] = np.load(npy_file_path)
+                    else:
+                        print(f"Warning: {npy_file_path} not found!")
+                        
+                keys = self.video_list
+                for vidx in range(len(keys)):
+                    if keys[vidx] in feature_All:
+                        self.feature_rgb_file[keys[vidx]] = feature_All[keys[vidx]]
                 self.feature_flow_file = None    
     
     def _loadFeaturelen(self, opt):
@@ -219,6 +266,17 @@ class VideoDataSet(data.Dataset):
                 feature_file = {}
                 for file in self.video_list:
                     feature_file[file] = torch.load(opt["video_feature_all_train"]+file+'.pt')
+            elif opt['data_format'] == "npy":
+                feature_file = {}
+                data_dir = opt["video_feature_all_train"]
+                if not data_dir.endswith('/'):
+                    data_dir += '/'
+                for file in self.video_list:
+                    npy_file_path = os.path.join(data_dir, file + '.npy')
+                    if os.path.exists(npy_file_path):
+                        feature_file[file] = np.load(npy_file_path)
+                    else:
+                        print(f"Warning: {npy_file_path} not found!")
         else:
             if opt['data_format'] == "h5":
                 feature_file = h5py.File(opt["video_feature_rgb_test"], 'r')
@@ -236,6 +294,17 @@ class VideoDataSet(data.Dataset):
                 feature_file = {}
                 for file in self.video_list:
                     feature_file[file] = torch.load(opt["video_feature_all_test"]+file+'.pt')
+            elif opt['data_format'] == "npy":
+                feature_file = {}
+                data_dir = opt["video_feature_all_test"]
+                if not data_dir.endswith('/'):
+                    data_dir += '/'
+                for file in self.video_list:
+                    npy_file_path = os.path.join(data_dir, file + '.npy')
+                    if os.path.exists(npy_file_path):
+                        feature_file[file] = np.load(npy_file_path)
+                    else:
+                        print(f"Warning: {npy_file_path} not found!")
                     
                     
         keys = self.video_list
@@ -254,6 +323,12 @@ class VideoDataSet(data.Dataset):
         elif opt['data_format'] == "pt":
             for vidx in range(len(keys)):
                 self.video_len[keys[vidx]]=len(feature_file[keys[vidx]])
+        elif opt['data_format'] == "npy":
+            for vidx in range(len(keys)):
+                if keys[vidx] in feature_file:
+                    self.video_len[keys[vidx]]=len(feature_file[keys[vidx]])
+                else:
+                    print(f"Warning: Video {keys[vidx]} not found in feature files!")
         # print(self.video_len)
         outfile=open(self.video_len_path,"w")
         json.dump(self.video_len,outfile, indent=2)
@@ -282,32 +357,35 @@ class VideoDataSet(data.Dataset):
     def _getMatchScore(self):
         self.action_end_count = torch.zeros(2)
         for index in range(0, len(self.video_list)):
-            video_name=self.video_list[index]
-                            
-            video_info=self.video_dict[video_name]
-            video_labels=video_info['annotations']
-            gt_bbox = []   
-            gt_edlen = []   
+            video_name = self.video_list[index]
+            video_info = self.video_dict[video_name]
+            video_labels = video_info['annotations']
+            gt_bbox = []
+            gt_edlen = []
             
             second_to_frame = self.video_len[video_name] / float(video_info['duration'])
             for j in range(len(video_labels)):
-                tmp_info=video_labels[j]
-                tmp_start= tmp_info['segment'][0]*second_to_frame
-                tmp_end  = tmp_info['segment'][1]*second_to_frame
-                tmp_label=self.label_name.index(tmp_info['label'])
-                gt_bbox.append([tmp_start,tmp_end,tmp_label])
-                gt_edlen.append([gt_bbox[-1][1], gt_bbox[-1][1]-gt_bbox[-1][0],tmp_label])
-                              
-            gt_bbox=np.array(gt_bbox)
-            gt_edlen=np.array(gt_edlen)
-            self.gt_action[video_name]=gt_edlen
+                tmp_info = video_labels[j]
+                tmp_start = tmp_info['segment'][0] * second_to_frame
+                tmp_end = tmp_info['segment'][1] * second_to_frame
+                tmp_label = self.label_name.index(tmp_info['label'])
+                gt_bbox.append([tmp_start, tmp_end, tmp_label])
+                gt_edlen.append([gt_bbox[-1][1], gt_bbox[-1][1] - gt_bbox[-1][0], tmp_label])
             
-            match_score=np.zeros((self.video_len[video_name],self.num_of_class-1), dtype=np.float32)
+            gt_bbox = np.array(gt_bbox)
+            gt_edlen = np.array(gt_edlen)
+            self.gt_action[video_name] = gt_edlen
+            
+            match_score = np.zeros((self.video_len[video_name], self.num_of_class-1), dtype=np.float32)
             for idx in range(gt_bbox.shape[0]):
-                ed=int(gt_bbox[idx,1])+1
-                st=int(gt_bbox[idx,0])
-                match_score[st :ed, int(gt_bbox[idx,2])]=idx+1
-            self.match_score[video_name]=match_score
+                ed = int(gt_bbox[idx, 1]) + 1
+                st = int(gt_bbox[idx, 0])
+                class_idx = int(gt_bbox[idx, 2])
+                if class_idx >= self.num_of_class - 1:
+                    print(f"Error: Class index {class_idx} exceeds max index {self.num_of_class-1} for video {video_name}")
+                    continue
+                match_score[st:ed, class_idx] = idx + 1
+            self.match_score[video_name] = match_score
             
     def _makeInputSeq(self):
         data_idx=0
@@ -511,7 +589,7 @@ class SuppressDataSet(data.Dataset):
             duration = self.data_file[video_name+'/input'].shape[0]
             for i in range(0, duration):
                 self.inputs.append([video_name,i])
-                
+                    
         print ("%s subset seg numbers: %d" %(self.subset,len(self.inputs)))
         
     def __getitem__(self, index):

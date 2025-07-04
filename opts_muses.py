@@ -34,7 +34,7 @@ def parse_opt():
     parser.add_argument(
         '--data_format',
         type=str,
-        default="pickle")     
+        default="npy")     
     parser.add_argument(
         '--data_rescale',
         default=False,
@@ -68,10 +68,10 @@ def parse_opt():
         '--exp',
         type=str,
         default="01")
-    # parser.add_argument(
-    #     '--split',
-    #     type=str,
-    #     default="1")
+    parser.add_argument(
+        '--split',
+        type=str,
+        default="1")
         
     #network
     parser.add_argument(
