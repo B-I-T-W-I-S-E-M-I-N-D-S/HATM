@@ -50,15 +50,28 @@ def parse_opt():
     parser.add_argument(
         '--video_anno',
         type=str,
-        default="./data/thumos14_v2.json")           
+        default="./data/muses_v1.0.json")           
     parser.add_argument(
         '--video_feature_all_train',
         type=str,
-        default="./data/thumos_all_feature_val_V3.pickle")
+        default="./data/muses/")
     parser.add_argument(
         '--video_feature_all_test',
         type=str,
-        default="./data/thumos_all_feature_test_V3.pickle")
+        default="./data/muses/")
+    
+    parser.add_argument(
+        '--setup',
+        type=str,
+        default="")
+    parser.add_argument(
+        '--exp',
+        type=str,
+        default="01")
+    # parser.add_argument(
+    #     '--split',
+    #     type=str,
+    #     default="1")
         
     #network
     parser.add_argument(
